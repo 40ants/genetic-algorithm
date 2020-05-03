@@ -1,0 +1,13 @@
+# -*- encoding: utf-8 mode: poly-org;  -*-
+
+* This is our package definition
+
+Symbols aren't exported here, because we are using
+~(hu.dwim.def:def (function e) foo ()...)~ to mark a function as exported.
+
+#+begin_src lisp
+
+(defpackage genetic-algorithm
+  (:use #:cl #:hu.dwim.def))
+
+#+end_src

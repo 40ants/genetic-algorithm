@@ -1,0 +1,388 @@
+# -*- encoding: utf-8 mode: poly-org;  -*-
+
+* genetic-algorithm
+
+This Common Lisp system implements a DSL for running Genetic Algorithm.
+
+#+begin_src lisp
+
+(in-package genetic-algorithm)
+
+#+end_src
+
+** Here is how our DSL will look like
+
+#+begin_src lisp :load nil
+
+(run-ga (((x 0 10)
+          (y -10 10 :mutation-rate 0.05)
+          (z '(:foo :bar :bazz)))
+    :max-iterations 100
+    :mutation-rate 0.01
+    may be some other params
+    with reasonable defaults)
+  
+  ;; This code should calculate if
+  ;; given x y z are good enough.
+  ;; This code should return a number.
+  ;; Buy default algorithm searches parameters
+  ;; which minimize result of this function
+  (abs (- (ecase z
+            (:foo 10)
+            (:bar 100)
+            (:bazz 1000))
+           (+ x y))))
+
+#+end_src
+
+This example solves ~a + 2*b + 3*c + 4*d = 30~ equation:
+
+#+begin_src lisp :load nil
+
+(run-ga (((a 1.0 100.0)
+          (b 1.0 100.0)
+          (c 1.0 100.0)
+          (d 1.0 100.0))
+    :max-iterations 50
+    :mutation-rate 0.01)
+  
+  (abs (- 30
+           (+ a
+               (* 2 b)
+               (* 3 c)
+               (* 4 d)))))
+
+#+end_src
+
+** What is genome? 
+
+In our case, genome is a definition of all properties we want to
+~crossover~ and ~mutate~. First argument of ~run-ga~ is genome.
+
+Genome is a list of gen definitions.
+
+Each gen definition has a name and a range of values. Or it maybe be not a number
+but a discrete value from a list. Here are examples of gen definitions:
+
+- ~(x 0 10)~ - an integer value in ~[0..10]~ range.
+- ~(x 0.0 10.0)~ - a float value in ~[0.0, 10.0]~ interval.
+- ~(x (:foo :bar :bazz))~ - a one of the  given keywords.
+- ~(x (nil t))~ - either ~nil~ or ~t~.
+
+Here is a class to define the gen. Each gen has a name and two
+functions. One function creates a random value for a new gen, and second
+function mutates gen with some probability. These two functions will be
+created from gen definition, provided by user:
+
+#+begin_src lisp
+
+(def class gen ()
+  ((name :type symbol
+         :initarg :name
+         :reader get-name)
+   (new-value-generator :type function
+                        :initarg :new-value-generator
+                        :reader get-new-value-generator)
+   (mutator :type function
+            :initarg :mutator
+            :reader get-mutator)))
+
+#+end_src
+
+Now we'll define a function to create a new value generator:
+
+#+begin_src lisp
+
+(def function make-new-value-generator (gen-definition)
+  (destructuring-bind (name from &optional to)
+      (take-until-keyword gen-definition)
+    (declare (ignorable name))
+    
+    (cond
+      ((and from to)
+       (unless (and (typep from 'number)
+                    (typep to 'number))
+         (error "Both \"from\" and \"to\" values should be numbers but you provided ~S and ~S"
+                from to))
+
+       (lambda ()
+         (+ from
+             (random (- to from)))))
+      (from
+       (unless (typep from 'list)
+         (error "When only \"from\" is supplied, it should be a list of posible gen values."))
+
+       (lambda ()
+         (random-elt from))))))
+
+#+end_src
+
+The function which mutates gen is similar to the
+~make-new-value-generator~ it takes current value, and changes it with
+given probability
+
+#+begin_src lisp
+
+(def function make-mutator (gen-definition &key (mutation-rate 0.01))
+  (destructuring-bind (name from &optional to)
+      (take-until-keyword gen-definition)
+    (declare (ignorable name))
+    
+    (destructuring-bind (&key (mutation-rate mutation-rate))
+        (take-starting-from-keyword gen-definition)
+      (cond
+        ((and from to)
+         (unless (and (typep from 'number)
+                      (typep to 'number))
+           (error "Both \"from\" and \"to\" values should be numbers but you provided ~S and ~S"
+                  from to))
+
+         (lambda (value)
+           (if (<= (random 1.0)
+                   mutation-rate)
+               (+ from
+                   (random (- to from)))
+               ;; or return current value
+               value)))
+        (from
+         (unless (typep from 'list)
+           (error "When only \"from\" is supplied, it should be a list of posible gen values."))
+
+         (lambda (value)
+           (if (<= (random 1.0)
+                   mutation-rate)
+               (random-elt from)
+               ;; or return current value
+               value)))))))
+
+#+end_src
+
+We'll need gen names to bind these variables and to print being's
+gens. This function extracts gen names from their definitions:
+
+#+begin_src lisp
+
+(def function get-var-names (genome)
+  (mapcar #'get-name genome))
+
+#+end_src
+
+Now we can define a function which will make a gen object:
+
+#+begin_src lisp
+
+(def (function io) make-gen (definition &key (mutation-rate 0.01))
+     (make-instance 'gen
+                    :name (car definition)
+                    :new-value-generator (make-new-value-generator definition)
+                    :mutator (make-mutator definition
+                                           :mutation-rate mutation-rate)))
+
+#+end_src
+
+** Being is an object with specific gens
+
+Genetic algorithm works with a population of beings. To describe the
+state of each being, it gens, we'll use this class and some helpers to
+create and modify it:
+
+#+begin_src lisp
+
+(def class being ()
+  ((fit :initform nil
+        :accessor get-fit
+        :documentation "A value characterizing this being's performance. How good it's gens for our business logic.")
+   (gens :initarg :gens
+         :type (list-of:list-of gen)
+         :documentation "A list of values for each gen from the genome."
+         :reader get-gens)
+   (genome :initarg :genome
+           :documentation "A genome definition, passed to the algorigthm."
+           :reader get-genome)))
+
+#+end_src
+
+This nice printer will allow us to view all objects characteristics in
+the REPL:
+
+#+begin_src lisp
+
+(def print-object being
+  (format t "gens: ~A fit: ~A"
+          (rutils:interleave (get-var-names (get-genome -self-))
+                             (get-gens -self-))
+          (get-fit -self-)))
+
+#+end_src
+
+** Phase 1: Creating initial population
+
+This function choosed random values for each gen. It is used to create
+initial population in the first phase of the Genetic Algorithm.
+
+#+begin_src lisp
+
+(def function make-random-being (genome)
+  "Genome is '((x 0 10) (y -3 3))
+   gens are randomly selected from the ranges."
+  (check-type genome (list-of:list-of gen))
+  (make-instance 'being
+                 :genome genome
+                 :gens (loop for gen in genome
+                             collect (funcall (get-new-value-generator gen)))))
+
+#+end_src
+
+Initial population just a number of beings with random gens:
+
+#+begin_src lisp
+
+(defun make-population (genome size)
+  (loop repeat size
+        collect (make-random-being genome)))
+
+#+end_src
+
+** Phase 2: Calculating if being is good enough
+
+What Genetic Algorithm does? It tests if each being is good enough. If
+it isn't, then it kills it and let others to be fruitful and multiply.
+
+User of this library provides us a code which calculates if gens are
+good enought. All what we need now is to apply this function to every
+being in the population and to save results for further processing:
+
+#+begin_src lisp
+
+(def (function d) calculate-fit (population fit)
+  (loop for obj in population
+        for gens = (get-gens obj)
+        for value = (apply fit gens)
+        do (setf (get-fit obj)
+                 value))
+  population)
+
+#+end_src
+
+Next, we need to select good enougth beings. To simplify, we'll just
+sort results and take some percents of the best species to the next
+iteration. Rest will die:
+
+#+begin_src lisp
+
+(def function select-survivors (population ratio)
+  (let ((sorted (sort population #'< :key #'get-fit)))
+    (rutils:take (ceiling (* (length sorted)
+                             ratio))
+                 sorted)))
+
+#+end_src
+
+Also we'll need this function to select the best of the best gens at the
+end of the algorigthm:
+
+#+begin_src lisp
+
+(def function select-the-best (population)
+  (first (select-survivors population 0.01)))
+
+#+end_src
+
+
+** Phase 3: Multiplying our beings
+
+At this stage, the population was reduced and we need to make children
+to fill the population up to it's desired size. That is what our
+~crossover~ function does:
+
+#+begin_src lisp
+
+(def (function oi) make-child (survivors &key (num-parents 2))
+  (let* ((parents (random-sample:random-sample survivors num-parents))
+         (first-parent (first parents))
+         (genome (get-genome first-parent))
+         (gens (apply #'mapcar
+                      #'select-gen
+                      (mapcar #'get-gens parents))))
+    (make-instance 'being
+                   :genome genome
+                   :gens gens)))
+
+(def function crossover (survivors population-size)
+  (loop with population = survivors
+        with num-children = (- population-size
+                                (length survivors))
+        repeat num-children
+        do (push (make-child survivors)
+                 population)
+        finally (return population)))
+
+
+#+end_src
+
+** Phase 4: Mutating gens
+
+For mutation, we'll call a mutator for each gen and it will return a new
+value with given probability ~mutation-rate~:
+
+#+begin_src lisp
+
+(def function mutate-being (being)
+  (setf (slot-value being 'gens)
+        (loop with genome = (get-genome being)
+              for gen-value in (get-gens being)
+              for gen in genome
+              for mutator = (get-mutator gen)
+              collect (funcall mutator gen-value))))
+
+(def function mutate (population)
+  "This function modifies population in-place."
+  (loop for being in population
+        do (mutate-being being))
+  population)
+
+#+end_src
+
+** Whole algorithm
+
+#+begin_src lisp
+
+(def (macro e) run-ga ((genome &key
+                               (population-size 100)
+                               (max-iterations 1000)
+                               (survive-ratio 0.5)
+                               (mutation-rate 0.01))
+                        &body fitness-code)
+  
+  (let ((var-names (mapcar #'car genome)))
+    
+    (unless genome
+      (error "Please, provide :genome parameter"))
+    
+    `(flet ((fit (,@var-names)
+              ,@fitness-code))
+       (let* ((genome (loop for definition in ',genome
+                            collect (make-gen definition :mutation-rate ,mutation-rate)))
+              (population (make-population genome ,population-size)))
+         (loop repeat ,max-iterations
+               do (setf population
+                        (arrows:-> population
+                                   (calculate-fit #'fit)
+                                   (select-survivors ,survive-ratio)
+                                   (crossover ,population-size)
+                                   (mutate))))
+         (arrows:-> population
+                    (calculate-fit #'fit)
+                    (select-the-best))))))
+
+#+end_src
+
+To make this macro arguments looks nice, we'll add a special indentation
+rule for the Emacs:
+
+#+begin_src lisp
+
+(trivial-indent:define-indentation run-ga
+    ((&whole &lambda &rest -4) &body))
+
+#+end_src

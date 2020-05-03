@@ -1,0 +1,63 @@
+# -*- encoding: utf-8 mode: poly-org;  -*-
+
+* Some helpers
+
+To run GA, we'll need some helpers.
+
+#+begin_src lisp
+
+(in-package genetic-algorithm)
+
+#+end_src
+
+** Getting a random value from a list
+
+#+begin_src lisp
+
+(def (function oi) random-elt (list)
+  (let ((idx (random (length list))))
+    (nth idx list)))
+
+#+end_src
+
+** Selecting a random Gen
+
+This function is just a syntax sugar over ~random-elt~. It makes code more
+semantic:
+
+#+begin_src lisp
+
+(def (function oi) select-gen (&rest gens)
+  "Selects one random gen from multiple parents gens."
+  (random-elt gens))
+
+#+end_src
+
+This function is used to select a random value for a gen.
+~From~ and ~to~ values are taken from the gen definition. In case when gen
+is an item from the list, ~to~ value can be nil.
+
+** Working with lists
+
+These two functions are used to process gen definition. We need them
+because ~to~ argument is optional and may be followed by keyword
+arguments. But ~destructuring-bind~ does not allow to use ~&optional~ and
+~&key~ in the same lambda list
+
+#+begin_src lisp
+
+(def (function io) take-until-keyword (list)
+  (loop for item in list
+        while (not (keywordp item))
+        collect item))
+
+(def (function io) take-starting-from-keyword (list)
+  (loop with collecting = nil
+        for item in list
+        when (and (keywordp item)
+                  (not collecting))
+          do (setf collecting t)
+        when collecting
+          collect item))
+
+#+end_src
