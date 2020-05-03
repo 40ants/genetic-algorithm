@@ -123,7 +123,9 @@ given probability
 
 #+begin_src lisp
 
-(def function make-mutator (gen-definition &key (mutation-rate 0.01))
+(def (function d) make-mutator (gen-definition &key
+                                               (mutation-rate 0.01)
+                                               (mutation-sigma 1.0))
   (destructuring-bind (name from &optional to)
       (take-until-keyword gen-definition)
     (declare (ignorable name))
@@ -140,8 +142,9 @@ given probability
          (lambda (value)
            (if (<= (random 1.0)
                    mutation-rate)
-               (+ from
-                   (random (- to from)))
+               (arrows:-> (random-gauss value mutation-sigma)
+                 (min to)
+                 (max from))
                ;; or return current value
                value)))
         (from
@@ -171,12 +174,15 @@ Now we can define a function which will make a gen object:
 
 #+begin_src lisp
 
-(def (function io) make-gen (definition &key (mutation-rate 0.01))
+(def (function io) make-gen (definition &key
+                                        (mutation-rate 0.01)
+                                        (mutation-sigma 1.0))
      (make-instance 'gen
                     :name (car definition)
                     :new-value-generator (make-new-value-generator definition)
                     :mutator (make-mutator definition
-                                           :mutation-rate mutation-rate)))
+                                           :mutation-rate mutation-rate
+                                           :mutation-sigma mutation-sigma)))
 
 #+end_src
 
@@ -270,8 +276,11 @@ iteration. Rest will die:
 
 #+begin_src lisp
 
-(def function select-survivors (population ratio)
-  (let ((sorted (sort population #'< :key #'get-fit)))
+(def function select-survivors (population ratio &key (maximize nil))
+  (let ((sorted (sort population (if maximize
+                                     #'>
+                                     #'<)
+                      :key #'get-fit)))
     (rutils:take (ceiling (* (length sorted)
                              ratio))
                  sorted)))
@@ -283,8 +292,9 @@ end of the algorigthm:
 
 #+begin_src lisp
 
-(def function select-the-best (population)
-  (first (select-survivors population 0.01)))
+(def function select-the-best (population &key (maximize nil))
+  (first (select-survivors population 0.01
+                           :maximize maximize)))
 
 #+end_src
 
@@ -343,6 +353,13 @@ value with given probability ~mutation-rate~:
 
 #+end_src
 
+Mutation has these parameters to tune:
+
+- mutation-rate - a probability of change a single gen.
+- mutation-sigma - a value of squared sigma for gaussian
+  distribution. This distribution will be used to change gen's value if
+  it is a number in given range.
+
 ** Whole algorithm
 
 #+begin_src lisp
@@ -351,7 +368,9 @@ value with given probability ~mutation-rate~:
                                (population-size 100)
                                (max-iterations 1000)
                                (survive-ratio 0.5)
-                               (mutation-rate 0.01))
+                               (mutation-rate 0.01)
+                               (mutation-sigma 1.0)
+                               (maximize nil))
                         &body fitness-code)
   
   (let ((var-names (mapcar #'car genome)))
@@ -362,13 +381,16 @@ value with given probability ~mutation-rate~:
     `(flet ((fit (,@var-names)
               ,@fitness-code))
        (let* ((genome (loop for definition in ',genome
-                            collect (make-gen definition :mutation-rate ,mutation-rate)))
+                            collect (make-gen definition
+                                              :mutation-rate ,mutation-rate
+                                              :mutation-sigma ,mutation-sigma
+                                              )))
               (population (make-population genome ,population-size)))
          (loop repeat ,max-iterations
                do (setf population
                         (arrows:-> population
                                    (calculate-fit #'fit)
-                                   (select-survivors ,survive-ratio)
+                                   (select-survivors ,survive-ratio :maximize ,maximize)
                                    (crossover ,population-size)
                                    (mutate))))
          (arrows:-> population
@@ -390,6 +412,4 @@ rule for the Emacs:
 ** Roadmap
 
 - Add ability to stop iterations when fit function is good enough.
-- Add ability not only to minimize the fit function but also to maximize
-  it.
 - Check with [[https://github.com/40ants/cl-flamegraph][cl-flamegraph]] if some performance optimize are required.
