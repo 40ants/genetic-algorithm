@@ -130,7 +130,8 @@ given probability
       (take-until-keyword gen-definition)
     (declare (ignorable name))
     
-    (destructuring-bind (&key (mutation-rate mutation-rate))
+    (destructuring-bind (&key (mutation-rate mutation-rate)
+                              (mutation-sigma mutation-sigma))
         (take-starting-from-keyword gen-definition)
       (cond
         ((and from to)
@@ -194,7 +195,7 @@ create and modify it:
 
 #+begin_src lisp
 
-(def class being ()
+(def (class ea) being ()
   ((fit :initform nil
         :accessor get-fit
         :documentation "A value characterizing this being's performance. How good it's gens for our business logic.")
