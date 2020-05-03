@@ -16,7 +16,7 @@ This Common Lisp system implements a DSL for running Genetic Algorithm.
 
 (run-ga (((x 0 10)
           (y -10 10 :mutation-rate 0.05)
-          (z '(:foo :bar :bazz)))
+          (z (:foo :bar :bazz)))
     :max-iterations 100
     :mutation-rate 0.01
     may be some other params
