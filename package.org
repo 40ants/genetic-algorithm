@@ -8,6 +8,7 @@ Symbols aren't exported here, because we are using
 #+begin_src lisp
 
 (defpackage genetic-algorithm
-  (:use #:cl #:hu.dwim.def))
+  (:use #:cl #:hu.dwim.def)
+  (:export #:-population-))
 
 #+end_src

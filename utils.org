@@ -65,7 +65,7 @@ arguments. But ~destructuring-bind~ does not allow to use ~&optional~ and
 
 #+begin_src lisp
 
-(def (hu.dwim.def:function oei) random-gauss (mean standard-deviation)
+(def (hu.dwim.def:function oi) random-gauss (mean standard-deviation)
   "Generate a random number from a normal (Gaussian) distribution."
   (let* ((first-random (random 1.0))
          (sqrt-result (if (equal first-random 0.0)

@@ -292,9 +292,20 @@ end of the algorigthm:
 
 #+begin_src lisp
 
-(def function select-the-best (population &key (maximize nil))
+(def (function ei) select-the-best (population &key (maximize nil))
   (first (select-survivors population 0.01
                            :maximize maximize)))
+
+#+end_src
+
+This little helper function can be used in ~after-each-iteration~ code to
+select the best being:
+
+#+begin_src lisp
+
+(def (function ei) remove-if-null-fit (population)
+  (remove-if-not #'get-fit
+                 population))
 
 #+end_src
 
@@ -362,15 +373,43 @@ Mutation has these parameters to tune:
 
 ** Whole algorithm
 
+Entry point to running algorithm is the ~run-ga~ macro. It allows to set
+some algorithm parameters and a code to calculate fitness function.
+
+This code will be called with every gen's value, bound to corresponding
+gen name.
+
+Also, you can define a code to be executed after each iteration:
+
+#+begin_src lisp :load nil
+
+(run-ga (((a 1.0 10.0)
+          (b 1.0 10.0))
+    :num-iterations 10
+    :after-each-iteration (format t "Fit: ~A~%"
+                                  (arrows:-> -population-
+                                    (remove-if-null-fit)
+                                    (select-the-best)
+                                    (get-fit)))
+    :maximize t)
+  (+ a b))
+
+#+end_src
+
+Variable ~genetic-algorithm:-population-~ will be available during this
+code execution.
+
 #+begin_src lisp
 
 (def (macro e) run-ga ((genome &key
                                (population-size 100)
                                (max-iterations 1000)
+                               (maximize nil)
                                (survive-ratio 0.5)
                                (mutation-rate 0.01)
                                (mutation-sigma 1.0)
-                               (maximize nil))
+                               ;; A code to be executed after each iteration:
+                               (after-each-iteration nil))
                         &body fitness-code)
   
   (let ((var-names (mapcar #'car genome)))
@@ -385,15 +424,16 @@ Mutation has these parameters to tune:
                                               :mutation-rate ,mutation-rate
                                               :mutation-sigma ,mutation-sigma
                                               )))
-              (population (make-population genome ,population-size)))
+              (-population- (make-population genome ,population-size)))
          (loop repeat ,max-iterations
-               do (setf population
-                        (arrows:-> population
+               do (setf -population-
+                        (arrows:-> -population-
                                    (calculate-fit #'fit)
                                    (select-survivors ,survive-ratio :maximize ,maximize)
                                    (crossover ,population-size)
-                                   (mutate))))
-         (arrows:-> population
+                                   (mutate)))
+                  (progn ,after-each-iteration))
+         (arrows:-> -population-
                     (calculate-fit #'fit)
                     (select-the-best))))))
 
