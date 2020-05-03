@@ -386,3 +386,10 @@ rule for the Emacs:
     ((&whole &lambda &rest -4) &body))
 
 #+end_src
+
+** Roadmap
+
+- Add ability to stop iterations when fit function is good enough.
+- Add ability not only to minimize the fit function but also to maximize
+  it.
+- Check with [[https://github.com/40ants/cl-flamegraph][cl-flamegraph]] if some performance optimize are required.
