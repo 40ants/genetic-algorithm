@@ -452,5 +452,6 @@ rule for the Emacs:
 
 ** Roadmap
 
+- Add ability to interrupt algorithm with Ctrl-C using a special restart.
 - Add ability to stop iterations when fit function is good enough.
 - Check with [[https://github.com/40ants/cl-flamegraph][cl-flamegraph]] if some performance optimize are required.
