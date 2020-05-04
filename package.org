@@ -9,6 +9,7 @@ Symbols aren't exported here, because we are using
 
 (defpackage genetic-algorithm
   (:use #:cl #:hu.dwim.def)
-  (:export #:-population-))
+  (:export #:-population-
+           #:-iteration-))
 
 #+end_src

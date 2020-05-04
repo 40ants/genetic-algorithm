@@ -426,7 +426,7 @@ code execution.
                                               :mutation-sigma ,mutation-sigma
                                               )))
               (-population- (make-population genome ,population-size)))
-         (loop repeat ,max-iterations
+         (loop for -iteration- from 1 upto ,max-iterations
                do (setf -population-
                         (arrows:-> -population-
                                    (calculate-fit #'fit)
