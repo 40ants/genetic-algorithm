@@ -143,9 +143,14 @@ given probability
          (lambda (value)
            (if (<= (random 1.0)
                    mutation-rate)
-               (arrows:-> (random-gauss value mutation-sigma)
-                 (min to)
-                 (max from))
+               (let ((new-value (arrows:-> (random-gauss value mutation-sigma)
+                                  (min to)
+                                  (max from))))
+                 ;; If original range was specified as integers,
+                 ;; then we need to coerce the new value to an integer
+                 (typecase from
+                   (integer (round new-value))
+                   (t new-value)))
                ;; or return current value
                value)))
         (from
