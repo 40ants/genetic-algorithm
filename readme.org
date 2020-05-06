@@ -431,17 +431,18 @@ code execution.
                                               :mutation-sigma ,mutation-sigma
                                               )))
               (-population- (make-population genome ,population-size)))
-         (loop for -iteration- from 1 upto ,max-iterations
-               do (setf -population-
-                        (arrows:-> -population-
-                                   (calculate-fit #'fit)
-                                   (select-survivors ,survive-ratio :maximize ,maximize)
-                                   (crossover ,population-size)
-                                   (mutate)))
-                  (progn ,after-each-iteration))
+         (with-simple-restart (stop-algorightm "Stop Genetic Algorithm evaluation and return the best result.")
+           (loop for -iteration- from 1 upto ,max-iterations
+                 do (setf -population-
+                          (arrows:-> -population-
+                            (calculate-fit #'fit)
+                            (select-survivors ,survive-ratio :maximize ,maximize)
+                            (crossover ,population-size)
+                            (mutate)))
+                    (progn ,after-each-iteration)))
          (arrows:-> -population-
-                    (calculate-fit #'fit)
-                    (select-the-best))))))
+           (remove-if-null-fit)
+           (select-the-best))))))
 
 #+end_src
 
@@ -457,6 +458,5 @@ rule for the Emacs:
 
 ** Roadmap
 
-- Add ability to interrupt algorithm with Ctrl-C using a special restart.
 - Add ability to stop iterations when fit function is good enough.
 - Check with [[https://github.com/40ants/cl-flamegraph][cl-flamegraph]] if some performance optimize are required.
