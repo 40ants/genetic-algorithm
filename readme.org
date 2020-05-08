@@ -391,7 +391,7 @@ Also, you can define a code to be executed after each iteration:
 
 (run-ga (((a 1.0 10.0)
           (b 1.0 10.0))
-    :num-iterations 10
+    :max-iterations 10
     :after-each-iteration (format t "Fit: ~A~%"
                                   (arrows:-> -population-
                                     (remove-if-null-fit)
@@ -402,10 +402,34 @@ Also, you can define a code to be executed after each iteration:
 
 #+end_src
 
-Variable ~genetic-algorithm:-population-~ will be available during this
-code execution.
+Variables ~genetic-algorithm:-population-~ and ~genetic-algorithm:-fit-~ will be available during this
+code execution. First one contains whole population, second - the fit value
+of the best being in the current population.
+
+First, we need to define some special variables which can be used in
+the user's code:
 
 #+begin_src lisp
+
+(def (special-variable e :documentation "Contains a number of the current generation starting from 1.")
+  -iteration-)
+
+(def (special-variable e :documentation "All beings for current generation.")
+  -population-)
+
+(def (special-variable e :documentation "Contains the best being in the current generation.")
+  -best-being-)
+
+(def (special-variable e :documentation "Contains the best fit value in the current generation.")
+  -fit-)
+
+#+end_src
+
+
+#+begin_src lisp
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (export 'stop-algorithm))
 
 (def (macro e) run-ga ((genome &key
                                (population-size 100)
@@ -416,7 +440,7 @@ code execution.
                                (mutation-sigma 1.0)
                                ;; A code to be executed after each iteration:
                                (after-each-iteration nil))
-                        &body fitness-code)
+                       &body fitness-code)
   
   (let ((var-names (mapcar #'car genome)))
     
@@ -431,12 +455,15 @@ code execution.
                                               :mutation-sigma ,mutation-sigma
                                               )))
               (-population- (make-population genome ,population-size)))
-         (with-simple-restart (stop-algorightm "Stop Genetic Algorithm evaluation and return the best result.")
+         (with-simple-restart (stop-algorithm "Stop Genetic Algorithm evaluation and return the best result.")
            (loop for -iteration- from 1 upto ,max-iterations
+                 for survivors = (arrows:-> -population-
+                                   (calculate-fit #'fit)
+                                   (select-survivors ,survive-ratio :maximize ,maximize))
+                 for -best-being- = (first survivors)
+                 for -fit- = (get-fit -best-being-)
                  do (setf -population-
-                          (arrows:-> -population-
-                            (calculate-fit #'fit)
-                            (select-survivors ,survive-ratio :maximize ,maximize)
+                          (arrows:-> survivors
                             (crossover ,population-size)
                             (mutate)))
                     (progn ,after-each-iteration)))
@@ -446,7 +473,13 @@ code execution.
 
 #+end_src
 
-To make this macro arguments looks nice, we'll add a special indentation
+As you can see, this macro established a simple restart with name
+~stop-algorithm~. You can either invoke it interactively from Emacs, by
+pressing ~C-c C-c~ first, or to use
+~(invoke-restart genetic-algorithm:stop-algorithm)~ from
+~:after-each-iteration~ code.
+
+To make ~run-ga~ macro arguments looks nice, we'll add a special indentation
 rule for the Emacs:
 
 #+begin_src lisp
@@ -455,6 +488,88 @@ rule for the Emacs:
     ((&whole &lambda &rest -4) &body))
 
 #+end_src
+
+** Stopping algorithm when fit is good enough
+
+Often you don't want to wait while all ~max-iterations~ will be calculated
+if found gens are good enough. In this case you might invoke
+~stop-algorithm~ restart from the ~:after-each-iteration~ code.
+
+To make it easier for most cases, you can use this function which
+creates an automatic checker if fit value does not evolve much during
+the last N iterations:
+
+#+begin_src lisp
+
+(def (function de) make-learn-rate-checker (n delta)
+  "This function returns a checker - function which accepts a fit value
+   and invokes stop-algorithm restart if a \"learn rate\" become less than `delta'."
+  (let (;; (first-value nil)
+        ;; (normalized-delta nil)
+        (last-values nil))
+    (lambda (fit)
+      (unless (zerop fit)
+        ;; (unless first-value
+        ;;   (setf first-value fit)
+        ;;   (setf normalized-delta (* first-value delta)))
+        (push fit last-values)
+        (setf last-values
+              (rutils:take n last-values))
+      
+        (when (> (length last-values)
+                 1)
+          (loop with prev = (car last-values)
+                for current in (cdr last-values)
+                for difference = (abs (- current prev))
+                do (setf prev current)
+                summing difference into diffs
+                finally (let* ((average-difference
+                                 (/ diffs
+                                    (1- (length last-values))))
+                               (normalized-average-difference
+                                 (/ average-difference
+                                    fit)))
+                          (when (< normalized-average-difference
+                                   delta)
+                            (invoke-restart 'stop-algorithm)))))))))
+
+#+end_src
+
+Here is how this learn rate checker can be used:
+
+#+begin_src lisp :load nil
+
+GENETIC-ALGORITHM> (let ((check-learn-rate (make-learn-rate-checker 10 0.001)))
+                     (run-ga (((a 1.0 100.0)
+                               (b 1.0 100.0))
+                         :max-iterations 100
+                         :after-each-iteration (progn
+
+                                                 (format t "~A Fit: ~,3F~%"
+                                                         -iteration-
+                                                         -fit-)
+                                                 (funcall check-learn-rate -fit-))
+                       :maximize t)
+                     (+ a b)))
+1 Fit: 182.498
+2 Fit: 186.917
+3 Fit: 189.060
+4 Fit: 195.029
+5 Fit: 197.085
+6 Fit: 197.085
+7 Fit: 197.085
+8 Fit: 197.085
+9 Fit: 197.085
+10 Fit: 197.085
+11 Fit: 197.437
+12 Fit: 197.437
+13 Fit: 197.496
+14 Fit: 197.496
+#<BEING gens: (A 99.85181 B 97.58560609207429d0) fit: 197.43741273269927d0 {100D575743}>
+
+#+end_src
+
+Algorithm was interrupted on 14 iteration instead of going upto 100.
 
 ** Roadmap
 
