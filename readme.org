@@ -202,6 +202,7 @@ create and modify it:
 
 (def (class ea) being ()
   ((fit :initform nil
+        :initarg :fit
         :accessor get-fit
         :documentation "A value characterizing this being's performance. How good it's gens for our business logic.")
    (gens :initarg :gens
@@ -269,9 +270,9 @@ being in the population and to save results for further processing:
 (def (function d) calculate-fit (population fit)
   (loop for obj in population
         for gens = (get-gens obj)
-        for value = (apply fit gens)
+        unless (get-fit obj)
         do (setf (get-fit obj)
-                 value))
+                 (apply fit gens)))
   population)
 
 #+end_src
@@ -282,7 +283,7 @@ iteration. Rest will die:
 
 #+begin_src lisp
 
-(def function select-survivors (population ratio &key (maximize nil))
+(def (function e) select-survivors (population ratio &key (maximize nil))
   (let ((sorted (sort population (if maximize
                                      #'>
                                      #'<)
@@ -336,13 +337,14 @@ to fill the population up to it's desired size. That is what our
                    :gens gens)))
 
 (def function crossover (survivors population-size)
-  (loop with population = survivors
-        with num-children = (- population-size
-                                (length survivors))
-        repeat num-children
-        do (push (make-child survivors)
-                 population)
-        finally (return population)))
+  ;; It is important to keep survivors at
+  ;; front, because we'll protect the best of them
+  ;; from mutation.
+  (append survivors
+          (loop with num-children = (- population-size
+                                        (length survivors))
+                repeat num-children
+                collect (make-child survivors))))
 
 
 #+end_src
@@ -357,14 +359,27 @@ value with given probability ~mutation-rate~:
 (def function mutate-being (being)
   (setf (slot-value being 'gens)
         (loop with genome = (get-genome being)
+              with mutated = nil
               for gen-value in (get-gens being)
               for gen in genome
               for mutator = (get-mutator gen)
-              collect (funcall mutator gen-value))))
+              for new-value = (funcall mutator gen-value)
+              unless (eql new-value gen-value)
+              do (setf mutated t)
+              collect new-value
+              ;; Later we'll recalculate fit
+              ;; only for mutated beings.
+              finally (when mutated
+                        (setf (get-fit being)
+                              nil)))))
 
-(def function mutate (population)
-  "This function modifies population in-place."
-  (loop for being in population
+(def function mutate (population &key (num-beings-to-protect 0))
+  "This function modifies population in-place.
+   Here we skip N the best beings to protect them
+   from mutation."
+  (check-type num-beings-to-protect (integer 0 65535))
+  (loop for being in (nthcdr num-beings-to-protect
+                             population)
         do (mutate-being being))
   population)
 
@@ -423,6 +438,9 @@ the user's code:
 (def (special-variable e :documentation "Contains the best fit value in the current generation.")
   -fit-)
 
+(def (special-variable e :documentation "Contains the worst fit value in the current generation.")
+  -worst-fit-)
+
 #+end_src
 
 
@@ -431,15 +449,67 @@ the user's code:
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (export 'stop-algorithm))
 
+(def function make-genome-by-definition (definition &key
+                                                    (mutation-rate 0.01)
+                                                    (mutation-sigma 1.0))
+  (loop for item in definition
+        collect (make-gen item
+                          :mutation-rate mutation-rate
+                          :mutation-sigma mutation-sigma)))
+
+(def (function e) make-being (genome-definition &rest rest
+                                                &key fit
+                                                mutation-rate
+                                                mutation-sigma
+                                                &allow-other-keys)
+  "This function can be useful to create being manually.
+
+   Genome definition is the same like you pass to run-ga '((x 0 10) (y -3 3))"
+  (declare (ignorable fit mutation-rate mutation-sigma))
+
+  (let* ((fit (getf rest :fit))
+         (mutation-rate (getf mutation-rate :mutation-rate))
+         (mutation-sigma (getf mutation-rate :mutation-sigma))
+         (genome (apply #'make-genome-by-definition
+                        (append (list genome-definition)
+                                (when mutation-rate
+                                  (list :mutation-rate mutation-rate))
+                                (when mutation-sigma
+                                  (list :mutation-sigma mutation-sigma))))))
+    
+    (make-instance 'being
+                   :fit fit
+                   :genome genome
+                   :gens (loop with gen-values = (alexandria:remove-from-plist
+                                                  rest
+                                                  :fit
+                                                  :mutation-rate
+                                                  :mutation-sigma)
+                               for gen in genome
+                               for gen-name = (alexandria:make-keyword
+                                               (get-name gen))
+                               collect (getf gen-values
+                                             gen-name)))))
+
+
 (def (macro e) run-ga ((genome &key
                                (population-size 100)
                                (max-iterations 1000)
                                (maximize nil)
+                               (num-beings-to-protect 1)
                                (survive-ratio 0.5)
                                (mutation-rate 0.01)
                                (mutation-sigma 1.0)
+                               ;; This can be a list of beings to be used
+                               ;; as a first generation. It will be filled
+                               ;; up-to population-size by random beings
+                               (first-generation nil)
                                ;; A code to be executed after each iteration:
-                               (after-each-iteration nil))
+                               (after-each-iteration nil)
+                               ;; This code will be executed at the end.
+                               ;; With -population- bound to the last generation.
+                               (finally nil)
+                               (calculate-fit 'calculate-fit))
                        &body fitness-code)
   
   (let ((var-names (mapcar #'car genome)))
@@ -449,27 +519,38 @@ the user's code:
     
     `(flet ((fit (,@var-names)
               ,@fitness-code))
-       (let* ((genome (loop for definition in ',genome
-                            collect (make-gen definition
-                                              :mutation-rate ,mutation-rate
-                                              :mutation-sigma ,mutation-sigma
-                                              )))
-              (-population- (make-population genome ,population-size)))
+       (let* ((genome (make-genome-by-definition ',genome
+                                                 :mutation-rate ,mutation-rate
+                                                 :mutation-sigma ,mutation-sigma))
+              (-population- (append ,first-generation
+                                    (make-population genome
+                                                     (- ,population-size
+                                                         (length ,first-generation))))))
          (with-simple-restart (stop-algorithm "Stop Genetic Algorithm evaluation and return the best result.")
            (loop for -iteration- from 1 upto ,max-iterations
                  for survivors = (arrows:-> -population-
-                                   (calculate-fit #'fit)
+                                   (crossover ,population-size)
+                                   (mutate :num-beings-to-protect ,num-beings-to-protect)
+                                   (,calculate-fit #'fit)
                                    (select-survivors ,survive-ratio :maximize ,maximize))
                  for -best-being- = (first survivors)
+                 for worst-being = (car (last survivors))
                  for -fit- = (get-fit -best-being-)
-                 do (setf -population-
-                          (arrows:-> survivors
-                            (crossover ,population-size)
-                            (mutate)))
-                    (progn ,after-each-iteration)))
+                 for -worst-fit- = (get-fit worst-being)
+                 do (setf -population- survivors)
+                    (progn ,after-each-iteration)
+                    (format t "Num survivors: ~A with some fit: ~A~%"
+                            (length survivors)
+                            (count-if (lambda (item)
+                                        (> (get-fit item)
+                                           0.0))
+                                      survivors))))
+         
+         (progn ,finally)
+         
          (arrows:-> -population-
            (remove-if-null-fit)
-           (select-the-best))))))
+           (select-the-best :maximize ,maximize))))))
 
 #+end_src
 
@@ -516,8 +597,8 @@ the last N iterations:
         (setf last-values
               (rutils:take n last-values))
       
-        (when (> (length last-values)
-                 1)
+        (when (= (length last-values)
+                 n)
           (loop with prev = (car last-values)
                 for current in (cdr last-values)
                 for difference = (abs (- current prev))
@@ -575,3 +656,11 @@ Algorithm was interrupted on 14 iteration instead of going upto 100.
 
 - Add ability to stop iterations when fit function is good enough.
 - Check with [[https://github.com/40ants/cl-flamegraph][cl-flamegraph]] if some performance optimize are required.
+
+** A code which should be called at the end
+
+#+begin_src lisp
+
+(asdf-finalizers:final-forms)
+
+#+end_src
