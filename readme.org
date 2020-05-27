@@ -525,6 +525,15 @@ the user's code:
     
     `(flet ((fit (,@var-names)
               ,@fitness-code))
+
+       ;; If we have some being at the beginning,
+       ;; we need to reset their fit, to recalculate
+       ;; it on first iteration in new circumstances:
+       (when ,first-generation
+         (loop for being in ,first-generation
+               do (setf (get-fit being)
+                        nil)))
+       
        (let* ((genome (make-genome-by-definition ',genome
                                                  :mutation-rate ,mutation-rate
                                                  :mutation-sigma ,mutation-sigma))
