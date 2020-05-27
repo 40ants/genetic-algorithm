@@ -652,6 +652,45 @@ GENETIC-ALGORITHM> (let ((check-learn-rate (make-learn-rate-checker 10 0.001)))
 
 Algorithm was interrupted on 14 iteration instead of going upto 100.
 
+** Saving and restoring objects
+If a being was saved and restored from disk, then we have to restore
+callbacks before we can use it in the next ~run-ga~ call. This is the
+purpose of the next function:
+
+#+begin_src lisp
+
+(def (function e) restore-genome (being definition
+                                        &key
+                                        (mutation-rate 0.01)
+                                        (mutation-sigma 1.0))
+  (loop for gen-definition in definition
+        for gen in (get-genome being)
+        do (restore-gen-funcs
+            gen
+            gen-definition
+            :mutation-rate mutation-rate
+            :mutation-sigma mutation-sigma)))
+
+#+end_src
+
+Also, we'll need this function to restore mutator and
+new-value-generator closures after the gen was restored from disk:
+
+#+begin_src lisp
+
+(def (function io) restore-gen-funcs (gen definition
+                                          &key
+                                          (mutation-rate 0.01)
+                                          (mutation-sigma 1.0))
+  (setf (slot-value gen 'new-value-generator)
+        (make-new-value-generator definition)
+        (slot-value gen 'mutator)
+        (make-mutator definition
+                      :mutation-rate mutation-rate
+                      :mutation-sigma mutation-sigma)))
+
+#+end_src
+
 ** Roadmap
 
 - Add ability to stop iterations when fit function is good enough.
