@@ -87,6 +87,12 @@ created from gen definition, provided by user:
             :initarg :mutator
             :reader get-mutator)))
 
+
+(defmethod print-object ((gen gen) stream)
+  (print-unreadable-object (gen stream :type t)
+    (format stream "~A"
+            (get-name gen))))
+
 #+end_src
 
 Now we'll define a function to create a new value generator:
