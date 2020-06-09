@@ -158,6 +158,8 @@ given probability
                  ;; then we need to coerce the new value to an integer
                  (typecase from
                    (integer (round new-value))
+                   (single-float (coerce new-value
+                                         'single-float))
                    (t new-value)))
                ;; or return current value
                value)))
