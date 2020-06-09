@@ -76,6 +76,8 @@ created from gen definition, provided by user:
 
 #+begin_src lisp
 
+(export '(gen get-name))
+
 (def class gen ()
   ((name :type symbol
          :initarg :name
