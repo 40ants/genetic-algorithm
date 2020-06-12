@@ -216,10 +216,10 @@ create and modify it:
         :accessor get-fit
         :documentation "A value characterizing this being's performance. How good it's gens for our business logic.")
    (gens :initarg :gens
-         :type (list-of:list-of gen)
          :documentation "A list of values for each gen from the genome."
          :reader get-gens)
    (genome :initarg :genome
+           :type (list-of:list-of gen)
            :documentation "A genome definition, passed to the algorigthm."
            :reader get-genome)))
 
@@ -386,6 +386,18 @@ value with given probability ~mutation-rate~:
                                 nil))))
     mutated))
 
+(def function copy-being (being)
+  (make-instance 'being
+                 :fit (get-fit being)
+                 ;; Genome list is the same for all beings
+                 :genome (get-genome being)
+                 ;; Also we aren't copying gens,
+                 ;; because during mutation they we be replaced
+                 ;; with a new list.
+                 ;; If this will be ever replaced by a vector,
+                 ;; then it will be need to be copied.
+                 :gens (get-gens being)))
+
 (def function mutate (population &key (num-beings-to-protect 0))
   "This function modifies population in-place.
    Here we skip N the best beings to protect them
@@ -394,7 +406,15 @@ value with given probability ~mutation-rate~:
   (loop for being in (nthcdr num-beings-to-protect
                              population)
         do (mutate-being being))
-  population)
+  (append population
+          ;; We add to the population a 'num-beings-to-protect'
+          ;; clones of the best species. And these clones will be
+          ;; always mutated:
+          (loop repeat num-beings-to-protect
+                for being in population
+                for clone = (copy-being being)
+                do (loop until (mutate-being clone))
+                collect clone)))
 
 #+end_src
 
@@ -551,7 +571,11 @@ the user's code:
          (with-simple-restart (stop-algorithm "Stop Genetic Algorithm evaluation and return the best result.")
            (loop for -iteration- from 1 upto ,max-iterations
                  for survivors = (arrows:-> -population-
-                                   (crossover ,population-size)
+                                   ;; Here we are making a little bit lesser beings,
+                                   ;; because for each being to protect we have to make
+                                   ;; a mutated copy.
+                                   (crossover (- ,population-size
+                                                  ,num-beings-to-protect))
                                    (mutate :num-beings-to-protect ,num-beings-to-protect)
                                    (,calculate-fit #'fit)
                                    (select-survivors ,survive-ratio :maximize ,maximize))
