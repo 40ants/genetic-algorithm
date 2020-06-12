@@ -366,22 +366,25 @@ value with given probability ~mutation-rate~:
 
 #+begin_src lisp
 
-(def function mutate-being (being)
-  (setf (slot-value being 'gens)
-        (loop with genome = (get-genome being)
-              with mutated = nil
-              for gen-value in (get-gens being)
-              for gen in genome
-              for mutator = (get-mutator gen)
-              for new-value = (funcall mutator gen-value)
-              unless (eql new-value gen-value)
-              do (setf mutated t)
-              collect new-value
-              ;; Later we'll recalculate fit
-              ;; only for mutated beings.
-              finally (when mutated
-                        (setf (get-fit being)
-                              nil)))))
+(def (function eo) mutate-being (being)
+  "This function can be used to check how does mutation work for your species.
+   Returns a `t' if being was mutated."
+  (let (mutated)
+    (setf (slot-value being 'gens)
+          (loop with genome = (get-genome being)
+                for gen-value in (get-gens being)
+                for gen in genome
+                for mutator = (get-mutator gen)
+                for new-value = (funcall mutator gen-value)
+                unless (eql new-value gen-value)
+                do (setf mutated t)
+                collect new-value
+                ;; Later we'll recalculate fit
+                ;; only for mutated beings.
+                finally (when mutated
+                          (setf (get-fit being)
+                                nil))))
+    mutated))
 
 (def function mutate (population &key (num-beings-to-protect 0))
   "This function modifies population in-place.
