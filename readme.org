@@ -604,17 +604,12 @@ the last N iterations:
 
 #+begin_src lisp
 
-(def (function de) make-learn-rate-checker (n delta)
+(def (function e) make-learn-rate-checker (n delta)
   "This function returns a checker - function which accepts a fit value
    and invokes stop-algorithm restart if a \"learn rate\" become less than `delta'."
-  (let (;; (first-value nil)
-        ;; (normalized-delta nil)
-        (last-values nil))
+  (let ((last-values nil))
     (lambda (fit)
       (unless (zerop fit)
-        ;; (unless first-value
-        ;;   (setf first-value fit)
-        ;;   (setf normalized-delta (* first-value delta)))
         (push fit last-values)
         (setf last-values
               (rutils:take n last-values))
@@ -674,6 +669,24 @@ GENETIC-ALGORITHM> (let ((check-learn-rate (make-learn-rate-checker 10 0.001)))
 
 Algorithm was interrupted on 14 iteration instead of going upto 100.
 
+** Stopping algorithm by timeout
+
+Similar as we interrupted GA when the fit is good enough, we might want
+to stop after some time period.
+
+#+begin_src lisp
+
+(def (function e) make-timeout-checker (seconds)
+  "This function returns a checker - function without arguments
+   which invokes stop-algorithm restart after a given number seconds."
+  (let ((time-to-stop (+ (get-universal-time)
+                          seconds)))
+    (lambda ()
+      (when (> (get-universal-time)
+               time-to-stop)
+        (invoke-restart 'stop-algorithm)))))
+
+#+end_src
 ** Saving and restoring objects
 If a being was saved and restored from disk, then we have to restore
 callbacks before we can use it in the next ~run-ga~ call. This is the
