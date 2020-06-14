@@ -693,6 +693,34 @@ GENETIC-ALGORITHM> (let ((check-learn-rate (make-learn-rate-checker 10 0.001)))
 
 Algorithm was interrupted on 14 iteration instead of going upto 100.
 
+There is also a similar way to stop algorithm if the fit improved more
+than some ratio from the first iteration's fit.
+
+This can be useful when you are training existing population but want
+avoid overfitting.
+
+#+begin_src lisp
+
+(def (function e) make-fit-improvement-checker (max-ratio)
+  "This function returns a checker - function which accepts a fit value
+   and invokes stop-algorithm current fit is greater than the first fit
+   to a given ratio.
+
+   For example, if max-ratio is 1.5 and first fit was 100, then algorith
+   will be stopped when fit become 150 or above."
+  (let ((first-fit nil))
+    (lambda (fit)
+      (cond
+        ((null first-fit)
+         (setf first-fit fit))
+        (t
+         (when (>= (/ fit first-fit)
+                  max-ratio)
+           (invoke-restart 'stop-algorithm)))))))
+
+#+end_src
+
+
 ** Stopping algorithm by timeout
 
 Similar as we interrupted GA when the fit is good enough, we might want
