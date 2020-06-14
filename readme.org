@@ -590,7 +590,8 @@ the user's code:
                             (count-if (lambda (item)
                                         (> (get-fit item)
                                            0.0))
-                                      survivors))))
+                                      survivors))
+                 finally (log:info "Algorithm stopped after" ,max-iterations "iterations")))
          
          (progn ,finally)
          

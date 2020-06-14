@@ -8,7 +8,8 @@
                "hu.dwim.def"
                "random-sample"
                "trivial-indent"
-               "list-of")
+               "list-of"
+               "log4cl")
   :components ((:org "package")
                (:org "utils" :depends-on ("package"))
                (:org "readme" :depends-on ("utils"))))
