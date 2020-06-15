@@ -386,7 +386,7 @@ value with given probability ~mutation-rate~:
                                 nil))))
     mutated))
 
-(def function copy-being (being)
+(def (function e) copy-being (being)
   (make-instance 'being
                  :fit (get-fit being)
                  ;; Genome list is the same for all beings
