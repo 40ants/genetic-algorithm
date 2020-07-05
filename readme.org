@@ -294,10 +294,12 @@ iteration. Rest will die:
 #+begin_src lisp
 
 (def (function e) select-survivors (population ratio &key (maximize nil))
-  (let ((sorted (sort population (if maximize
-                                     #'>
-                                     #'<)
-                      :key #'get-fit)))
+  (let* ((with-fit (remove-if #'null population
+                              :key #'get-fit))
+         (sorted (sort with-fit (if maximize
+                                    #'>
+                                    #'<)
+                       :key #'get-fit)))
     (rutils:take (ceiling (* (length sorted)
                              ratio))
                  sorted)))
@@ -351,13 +353,32 @@ to fill the population up to it's desired size. That is what our
   ;; front, because we'll protect the best of them
   ;; from mutation.
   (append survivors
-          (loop with num-children = (- population-size
-                                        (length survivors))
-                repeat num-children
-                collect (make-child survivors))))
-
+          (when survivors
+            (loop with num-children = (- population-size
+                                          (length survivors))
+                  repeat num-children
+                  collect (make-child survivors)))))
 
 #+end_src
+
+Also we'll need a function to fill our population with completely random
+beings. This way we'll inject a "fresh blood" and add a chance to find a
+better solution.
+
+#+begin_src lisp
+
+(def function add-random-beings (current-population population-size genome)
+  ;; It is important to keep current-population at
+  ;; front, because we'll protect the best of them
+  ;; from mutation.
+  (append current-population
+          (loop with num-beings-to-create = (- population-size
+                                                (length current-population))
+                repeat num-beings-to-create
+                collect (make-random-being genome))))
+
+#+end_src
+
 
 ** Phase 4: Mutating gens
 
@@ -531,6 +552,11 @@ the user's code:
                                (maximize nil)
                                (num-beings-to-protect 1)
                                (survive-ratio 0.5)
+                               ;; Then percentage of population
+                               ;; which should be reproduced by
+                               ;; crossover. Other part will be
+                               ;; filled by new random beings.
+                               (children-ratio 0.25)
                                (mutation-rate 0.01)
                                (mutation-sigma 1.0)
                                ;; This can be a list of beings to be used
@@ -574,22 +600,28 @@ the user's code:
                                    ;; Here we are making a little bit lesser beings,
                                    ;; because for each being to protect we have to make
                                    ;; a mutated copy.
-                                   (crossover (- ,population-size
-                                                  ,num-beings-to-protect))
+                                   (crossover (floor
+                                               (* (- ,population-size
+                                                      ,num-beings-to-protect)
+                                                  ,children-ratio)))
+                                   (add-random-beings (- ,population-size
+                                                          ,num-beings-to-protect)
+                                                      genome)
                                    (mutate :num-beings-to-protect ,num-beings-to-protect)
                                    (,calculate-fit #'fit)
                                    (select-survivors ,survive-ratio :maximize ,maximize))
                  for -best-being- = (first survivors)
                  for worst-being = (car (last survivors))
-                 for -fit- = (get-fit -best-being-)
-                 for -worst-fit- = (get-fit worst-being)
+                 for -fit- = (when -best-being-
+                               (get-fit -best-being-))
+                 for -worst-fit- = (when worst-being
+                                     (get-fit worst-being))
                  do (setf -population- survivors)
                     (progn ,after-each-iteration)
                     (format t "Num survivors: ~A with some fit: ~A~%"
                             (length survivors)
                             (count-if (lambda (item)
-                                        (> (get-fit item)
-                                           0.0))
+                                        (not (null (get-fit item))))
                                       survivors))
                  finally (log:warn "Algorithm stopped after" ,max-iterations "iterations")))
          
