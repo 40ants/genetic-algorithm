@@ -348,12 +348,13 @@ to fill the population up to it's desired size. That is what our
                    :genome genome
                    :gens gens)))
 
-(def function crossover (survivors population-size)
+(def function crossover (survivors population-size &key (num-parents 2))
   ;; It is important to keep survivors at
   ;; front, because we'll protect the best of them
   ;; from mutation.
   (append survivors
-          (when survivors
+          (when (>= (length survivors)
+                    num-parents)
             (loop with num-children = (- population-size
                                           (length survivors))
                   repeat num-children
