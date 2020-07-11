@@ -667,7 +667,8 @@ the last N iterations:
    and invokes stop-algorithm restart if a \"learn rate\" become less than `delta'."
   (let ((last-values nil))
     (lambda (fit)
-      (unless (zerop fit)
+      (unless (or (null fit)
+                  (zerop fit))
         (push fit last-values)
         (setf last-values
               (rutils:take n last-values))
